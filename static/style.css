@@ -1,61 +1,22 @@
 body {
-    font-family: Arial, sans-serif;
-    text-align: center;
-    background-color: #f4f4f4;
     margin: 0;
-    padding: 20px;
+    overflow: hidden;
+    font-family: Arial, sans-serif;
   }
   
-  h1 {
-    color: #333;
-  }
-  
-  .video-container {
-    display: flex;
-    justify-content: center;
-    gap: 10px;
-    margin-bottom: 20px;
-  }
-  
-  video {
-    width: 300px;
-    height: auto;
+  canvas {
     border: 1px solid #ccc;
-    border-radius: 8px;
+    position: absolute;
+    top: 0;
+    left: 0;
   }
   
-  .chat-container {
-    max-width: 400px;
-    margin: 0 auto;
-    text-align: left;
-  }
-  
-  .messages {
-    height: 200px;
-    overflow-y: auto;
-    border: 1px solid #ccc;
-    padding: 10px;
-    margin-bottom: 10px;
-    background: #fff;
-  }
-  
-  #chatInput {
-    width: calc(100% - 80px);
-    padding: 10px;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-  }
-  
-  #sendChat {
-    padding: 10px;
-    border: none;
-    background-color: #007bff;
-    color: white;
-    cursor: pointer;
-    border-radius: 4px;
-  }
-  
-  #sendChat:hover {
-    background-color: #0056b3;
+  .cursor {
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    background-color: red;
+    border-radius: 50%;
+    pointer-events: none;
   }
   

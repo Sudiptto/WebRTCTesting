@@ -3,104 +3,92 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>WebRTC Video & Chat</title>
+  <title>Real-Time Collaborative IDE</title>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-  <h1>WebRTC Video Call & Chat</h1>
-  <div class="video-container">
-    <video id="localVideo" autoplay muted></video>
-    <video id="remoteVideo" autoplay></video>
-  </div>
-  <div class="chat-container">
-    <div id="messages" class="messages"></div>
-    <input type="text" id="chatInput" placeholder="Type a message..." />
-    <button id="sendChat">Send</button>
-  </div>
-
+  <h1>Live Collaborative IDE</h1>
+  <canvas id="drawingCanvas"></canvas>
   <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
   <script>
     const socket = io();
+    const canvas = document.getElementById("drawingCanvas");
+    const ctx = canvas.getContext("2d");
 
-    // Video elements
-    const localVideo = document.getElementById("localVideo");
-    const remoteVideo = document.getElementById("remoteVideo");
+    const userId = Math.random().toString(36).substr(2, 9); // Unique ID for each user
+    const state = { drawing: false, cursorX: 0, cursorY: 0 };
 
-    // Chat elements
-    const chatInput = document.getElementById("chatInput");
-    const sendChat = document.getElementById("sendChat");
-    const messagesDiv = document.getElementById("messages");
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
 
-    let localStream;
-    let peerConnection;
-
-    // Initialize media stream
-    async function startStream() {
-      localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-      localVideo.srcObject = localStream;
-    }
-
-    // Create PeerConnection
-    async function createPeerConnection() {
-      peerConnection = new RTCPeerConnection();
-      localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
-
-      peerConnection.onicecandidate = event => {
-        if (event.candidate) {
-          socket.emit("ice-candidate", { candidate: event.candidate });
-        }
-      };
-
-      peerConnection.ontrack = event => {
-        remoteVideo.srcObject = event.streams[0];
-      };
-    }
-
-    // Signaling handlers
-    socket.on("offer", async data => {
-      await createPeerConnection();
-      await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
-      const answer = await peerConnection.createAnswer();
-      await peerConnection.setLocalDescription(answer);
-      socket.emit("answer", { answer });
+    // Resize canvas on window resize
+    window.addEventListener("resize", () => {
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      ctx.putImageData(imageData, 0, 0);
     });
 
-    socket.on("answer", async data => {
-      await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+    // Mouse events for drawing
+    canvas.addEventListener("mousedown", e => {
+      state.drawing = true;
+      state.cursorX = e.offsetX;
+      state.cursorY = e.offsetY;
     });
 
-    socket.on("ice-candidate", async data => {
-      if (data.candidate) {
-        await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+    canvas.addEventListener("mouseup", () => {
+      state.drawing = false;
+    });
+
+    canvas.addEventListener("mousemove", e => {
+      if (state.drawing) {
+        const x = e.offsetX;
+        const y = e.offsetY;
+        const data = { fromX: state.cursorX, fromY: state.cursorY, toX: x, toY: y, color: "black" };
+        socket.emit("update-drawing", data);
+        draw(data);
+        state.cursorX = x;
+        state.cursorY = y;
       }
+      // Emit cursor position
+      socket.emit("update-cursor", { id: userId, x: e.offsetX, y: e.offsetY });
     });
 
-    // Chat handlers
-    socket.on("chat", data => {
-      const messageDiv = document.createElement("div");
-      messageDiv.textContent = data.message;
-      messagesDiv.appendChild(messageDiv);
-    });
-
-    // Start video call
-    async function startCall() {
-      await createPeerConnection();
-      const offer = await peerConnection.createOffer();
-      await peerConnection.setLocalDescription(offer);
-      socket.emit("offer", { offer });
+    // Draw function
+    function draw({ fromX, fromY, toX, toY, color }) {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(fromX, fromY);
+      ctx.lineTo(toX, toY);
+      ctx.stroke();
     }
 
-    // Chat message sending
-    sendChat.addEventListener("click", () => {
-      const message = chatInput.value.trim();
-      if (message) {
-        socket.emit("chat", { message });
-        chatInput.value = "";
-      }
+    // Handle incoming drawing updates
+    socket.on("update-drawing", data => {
+      draw(data);
     });
 
-    // Initialize
-    startStream();
+    // Handle incoming cursor updates
+    socket.on("update-cursor", data => {
+      const cursor = document.getElementById(`cursor-${data.id}`) || createCursor(data.id);
+      cursor.style.left = `${data.x}px`;
+      cursor.style.top = `${data.y}px`;
+    });
+
+    // Handle initial canvas state
+    socket.on("init-canvas", canvasState => {
+      canvasState.elements.forEach(draw);
+    });
+
+    // Create cursor element
+    function createCursor(id) {
+      const cursor = document.createElement("div");
+      cursor.id = `cursor-${id}`;
+      cursor.className = "cursor";
+      document.body.appendChild(cursor);
+      return cursor;
+    }
   </script>
 </body>
 </html>
