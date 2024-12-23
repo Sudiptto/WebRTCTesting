@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Simple WebRTC</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-top: 50px;
+    }
+    textarea {
+      width: 300px;
+      height: 100px;
+      margin: 10px 0;
+    }
+    video {
+      width: 300px;
+      height: auto;
+      margin: 10px;
+      border: 1px solid #ddd;
+    }
+  </style>
+</head>
+<body>
+  <h1>Simple WebRTC</h1>
+  <video id="localVideo" autoplay muted></video>
+  <video id="remoteVideo" autoplay></video>
+  <textarea id="offer" placeholder="Offer/Answer"></textarea>
+  <button id="createOffer">Create Offer</button>
+  <button id="createAnswer">Create Answer</button>
+  <button id="setRemoteDescription">Set Remote Description</button>
+
+  <script>
+    const localVideo = document.getElementById("localVideo");
+    const remoteVideo = document.getElementById("remoteVideo");
+    const offerTextArea = document.getElementById("offer");
+
+    let localStream;
+    let peerConnection;
+
+    async function initialize() {
+      localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      localVideo.srcObject = localStream;
+    }
+
+    async function createPeerConnection() {
+      peerConnection = new RTCPeerConnection();
+      peerConnection.onicecandidate = event => {
+        if (event.candidate) {
+          console.log("New ICE Candidate:", JSON.stringify(peerConnection.localDescription));
+        }
+      };
+      peerConnection.ontrack = event => {
+        remoteVideo.srcObject = event.streams[0];
+      };
+      localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+    }
+
+    document.getElementById("createOffer").addEventListener("click", async () => {
+      await createPeerConnection();
+      const offer = await peerConnection.createOffer();
+      await peerConnection.setLocalDescription(offer);
+      offerTextArea.value = JSON.stringify(peerConnection.localDescription);
+    });
+
+    document.getElementById("createAnswer").addEventListener("click", async () => {
+      const offer = JSON.parse(offerTextArea.value);
+      await createPeerConnection();
+      await peerConnection.setRemoteDescription(offer);
+      const answer = await peerConnection.createAnswer();
+      await peerConnection.setLocalDescription(answer);
+      offerTextArea.value = JSON.stringify(peerConnection.localDescription);
+    });
+
+    document.getElementById("setRemoteDescription").addEventListener("click", async () => {
+      const answer = JSON.parse(offerTextArea.value);
+      await peerConnection.setRemoteDescription(answer);
+    });
+
+    initialize();
+  </script>
+</body>
+</html>
