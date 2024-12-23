@@ -5,18 +5,27 @@ body {
   }
   
   canvas {
-    border: 1px solid #ccc;
     position: absolute;
     top: 0;
     left: 0;
+    z-index: 1;
+    border: 1px solid #ccc;
   }
   
-  .cursor {
+  #videoContainer {
     position: absolute;
-    width: 10px;
-    height: 10px;
-    background-color: red;
+    top: 10px;
+    left: 10px;
+    z-index: 2;
+  }
+  
+  .video-circle {
+    position: absolute;
+    width: 100px;
+    height: 100px;
     border-radius: 50%;
-    pointer-events: none;
+    border: 2px solid #000;
+    overflow: hidden;
+    cursor: grab;
   }
   

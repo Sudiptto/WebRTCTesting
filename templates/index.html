@@ -3,21 +3,26 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Real-Time Collaborative IDE</title>
+  <title>Collaborative IDE with Video</title>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-  <h1>Live Collaborative IDE</h1>
+  <h1>Collaborative Drawing with Video</h1>
   <canvas id="drawingCanvas"></canvas>
+  <div id="videoContainer"></div>
   <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
   <script>
     const socket = io();
     const canvas = document.getElementById("drawingCanvas");
     const ctx = canvas.getContext("2d");
+    const videoContainer = document.getElementById("videoContainer");
 
     const userId = Math.random().toString(36).substr(2, 9); // Unique ID for each user
     const state = { drawing: false, cursorX: 0, cursorY: 0 };
+    let localStream;
+    let peerConnections = {};
 
+    // Set canvas dimensions
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
 
@@ -29,8 +34,8 @@
       ctx.putImageData(imageData, 0, 0);
     });
 
-    // Mouse events for drawing
-    canvas.addEventListener("mousedown", e => {
+    // Canvas drawing events
+    canvas.addEventListener("mousedown", (e) => {
       state.drawing = true;
       state.cursorX = e.offsetX;
       state.cursorY = e.offsetY;
@@ -40,7 +45,7 @@
       state.drawing = false;
     });
 
-    canvas.addEventListener("mousemove", e => {
+    canvas.addEventListener("mousemove", (e) => {
       if (state.drawing) {
         const x = e.offsetX;
         const y = e.offsetY;
@@ -50,8 +55,6 @@
         state.cursorX = x;
         state.cursorY = y;
       }
-      // Emit cursor position
-      socket.emit("update-cursor", { id: userId, x: e.offsetX, y: e.offsetY });
     });
 
     // Draw function
@@ -64,31 +67,99 @@
       ctx.stroke();
     }
 
-    // Handle incoming drawing updates
-    socket.on("update-drawing", data => {
+    // Handle drawing updates
+    socket.on("update-drawing", (data) => {
       draw(data);
     });
 
-    // Handle incoming cursor updates
-    socket.on("update-cursor", data => {
-      const cursor = document.getElementById(`cursor-${data.id}`) || createCursor(data.id);
-      cursor.style.left = `${data.x}px`;
-      cursor.style.top = `${data.y}px`;
-    });
-
-    // Handle initial canvas state
-    socket.on("init-canvas", canvasState => {
-      canvasState.elements.forEach(draw);
-    });
-
-    // Create cursor element
-    function createCursor(id) {
-      const cursor = document.createElement("div");
-      cursor.id = `cursor-${id}`;
-      cursor.className = "cursor";
-      document.body.appendChild(cursor);
-      return cursor;
+    // Initialize video
+    async function startVideo() {
+      localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      addVideo(userId, localStream, true);
+      socket.emit("participant-joined", { id: userId });
     }
+
+    // Add video element
+    function addVideo(id, stream, isLocal = false) {
+      const videoElement = document.createElement("video");
+      videoElement.id = `video-${id}`;
+      videoElement.srcObject = stream;
+      videoElement.autoplay = true;
+      videoElement.muted = isLocal;
+      videoElement.className = "video-circle";
+      makeDraggable(videoElement);
+      videoContainer.appendChild(videoElement);
+    }
+
+    // Make videos draggable
+    function makeDraggable(element) {
+      let offsetX, offsetY;
+
+      element.addEventListener("mousedown", (e) => {
+        offsetX = e.offsetX;
+        offsetY = e.offsetY;
+        const drag = (e) => {
+          element.style.left = `${e.pageX - offsetX}px`;
+          element.style.top = `${e.pageY - offsetY}px`;
+        };
+        document.addEventListener("mousemove", drag);
+        document.addEventListener("mouseup", () => {
+          document.removeEventListener("mousemove", drag);
+        });
+      });
+    }
+
+    // WebRTC signaling
+    socket.on("offer", async (data) => {
+      const peerConnection = new RTCPeerConnection();
+      peerConnections[data.id] = peerConnection;
+
+      peerConnection.ontrack = (event) => {
+        addVideo(data.id, event.streams[0]);
+      };
+
+      localStream.getTracks().forEach((track) => {
+        peerConnection.addTrack(track, localStream);
+      });
+
+      await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
+      const answer = await peerConnection.createAnswer();
+      await peerConnection.setLocalDescription(answer);
+      socket.emit("answer", { id: userId, target: data.id, answer });
+    });
+
+    socket.on("answer", async (data) => {
+      await peerConnections[data.id].setRemoteDescription(new RTCSessionDescription(data.answer));
+    });
+
+    socket.on("ice-candidate", async (data) => {
+      if (data.candidate) {
+        await peerConnections[data.id].addIceCandidate(new RTCIceCandidate(data.candidate));
+      }
+    });
+
+    socket.on("participant-joined", (data) => {
+      if (data.id !== userId) {
+        const peerConnection = new RTCPeerConnection();
+        peerConnections[data.id] = peerConnection;
+
+        peerConnection.ontrack = (event) => {
+          addVideo(data.id, event.streams[0]);
+        };
+
+        localStream.getTracks().forEach((track) => {
+          peerConnection.addTrack(track, localStream);
+        });
+
+        peerConnection.createOffer().then((offer) => {
+          peerConnection.setLocalDescription(offer);
+          socket.emit("offer", { id: userId, target: data.id, offer });
+        });
+      }
+    });
+
+    // Start video and drawing
+    startVideo();
   </script>
 </body>
 </html>
