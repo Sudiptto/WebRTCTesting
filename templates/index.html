@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WebRTC Video & Chat</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <h1>WebRTC Video Call & Chat</h1>
+  <div class="video-container">
+    <video id="localVideo" autoplay muted></video>
+    <video id="remoteVideo" autoplay></video>
+  </div>
+  <div class="chat-container">
+    <div id="messages" class="messages"></div>
+    <input type="text" id="chatInput" placeholder="Type a message..." />
+    <button id="sendChat">Send</button>
+  </div>
+
+  <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
+  <script>
+    const socket = io();
+
+    // Video elements
+    const localVideo = document.getElementById("localVideo");
+    const remoteVideo = document.getElementById("remoteVideo");
+
+    // Chat elements
+    const chatInput = document.getElementById("chatInput");
+    const sendChat = document.getElementById("sendChat");
+    const messagesDiv = document.getElementById("messages");
+
+    let localStream;
+    let peerConnection;
+
+    // Initialize media stream
+    async function startStream() {
+      localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      localVideo.srcObject = localStream;
+    }
+
+    // Create PeerConnection
+    async function createPeerConnection() {
+      peerConnection = new RTCPeerConnection();
+      localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+
+      peerConnection.onicecandidate = event => {
+        if (event.candidate) {
+          socket.emit("ice-candidate", { candidate: event.candidate });
+        }
+      };
+
+      peerConnection.ontrack = event => {
+        remoteVideo.srcObject = event.streams[0];
+      };
+    }
+
+    // Signaling handlers
+    socket.on("offer", async data => {
+      await createPeerConnection();
+      await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
+      const answer = await peerConnection.createAnswer();
+      await peerConnection.setLocalDescription(answer);
+      socket.emit("answer", { answer });
+    });
+
+    socket.on("answer", async data => {
+      await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+    });
+
+    socket.on("ice-candidate", async data => {
+      if (data.candidate) {
+        await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+      }
+    });
+
+    // Chat handlers
+    socket.on("chat", data => {
+      const messageDiv = document.createElement("div");
+      messageDiv.textContent = data.message;
+      messagesDiv.appendChild(messageDiv);
+    });
+
+    // Start video call
+    async function startCall() {
+      await createPeerConnection();
+      const offer = await peerConnection.createOffer();
+      await peerConnection.setLocalDescription(offer);
+      socket.emit("offer", { offer });
+    }
+
+    // Chat message sending
+    sendChat.addEventListener("click", () => {
+      const message = chatInput.value.trim();
+      if (message) {
+        socket.emit("chat", { message });
+        chatInput.value = "";
+      }
+    });
+
+    // Initialize
+    startStream();
+  </script>
+</body>
+</html>
